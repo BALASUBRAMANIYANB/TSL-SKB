@@ -150,8 +150,34 @@ const settingSchema = new mongoose.Schema({
     customHeaders: {
       type: Map,
       of: String,
-      default: {},
+      default: () => new Map(),
     },
+    scanProfiles: [{
+      name: String,
+      description: String,
+      settings: {
+        type: Map,
+        of: mongoose.Schema.Types.Mixed,
+      },
+      isDefault: Boolean,
+    }],
+    customScripts: [{
+      name: String,
+      description: String,
+      type: {
+        type: String,
+        enum: ['inline', 'file'],
+        default: 'inline',
+      },
+      content: String,
+      filePath: String,
+      language: {
+        type: String,
+        enum: ['python', 'javascript', 'bash'],
+        default: 'python',
+      },
+      enabled: Boolean,
+    }]
   },
   storage: {
     maxStorage: {
@@ -179,13 +205,71 @@ const settingSchema = new mongoose.Schema({
       enum: ['daily', 'weekly', 'monthly'],
       default: 'daily',
     },
-    backupTime: {
-      type: String,
-      default: '00:00',
+    backupRetention: {
+      type: Number,
+      default: 30,
+      min: 7,
+      max: 365,
     },
     compressionEnabled: {
       type: Boolean,
       default: true,
+    },
+    encryptionEnabled: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  integrations: {
+    jira: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      url: String,
+      username: String,
+      apiToken: String,
+      projectKey: String,
+      issueType: String,
+      autoCreate: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    slack: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      webhookUrl: String,
+      channel: String,
+      notifications: {
+        scanComplete: {
+          type: Boolean,
+          default: true,
+        },
+        criticalVulnerabilities: {
+          type: Boolean,
+          default: true,
+        },
+        weeklyReports: {
+          type: Boolean,
+          default: true,
+        },
+      },
+    },
+    github: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      token: String,
+      repository: String,
+      branch: String,
+      autoCommit: {
+        type: Boolean,
+        default: false,
+      },
     },
   },
   api: {
@@ -201,20 +285,23 @@ const settingSchema = new mongoose.Schema({
       min: 5,
       max: 300,
     },
-    corsEnabled: {
-      type: Boolean,
-      default: true,
+    cors: {
+      enabled: {
+        type: Boolean,
+        default: true,
+      },
+      allowedOrigins: [{
+        type: String,
+      }],
     },
-    allowedOrigins: [{
+    authentication: {
       type: String,
-    }],
-    apiVersion: {
-      type: String,
-      default: 'v1',
+      enum: ['none', 'basic', 'bearer', 'apiKey'],
+      default: 'bearer',
     },
-    documentationEnabled: {
-      type: Boolean,
-      default: true,
+    apiKey: {
+      type: String,
+      select: false,
     },
   },
   createdAt: {
@@ -233,4 +320,6 @@ settingSchema.pre('save', function(next) {
   next();
 });
 
-module.exports = mongoose.model('Setting', settingSchema); 
+const Setting = mongoose.model('Setting', settingSchema);
+
+module.exports = Setting; 

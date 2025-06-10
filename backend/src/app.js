@@ -10,9 +10,8 @@ const scanRoutes = require('./api/routes/scans');
 const targetRoutes = require('./api/routes/targets');
 const userRoutes = require('./api/routes/users');
 const reportRoutes = require('./api/routes/reports');
-const authRoutes = require('./api/routes/auth');
-const scanRoutes = require('./api/routes/scan');
 const settingsRoutes = require('./api/routes/settings');
+const scannerRoutes = require('./api/routes/scanner');
 
 // Create Express app
 const app = express();
@@ -54,9 +53,8 @@ app.use('/api/scans', scanRoutes);
 app.use('/api/targets', targetRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/scans', scanRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/scanner', scannerRoutes);
 
 // Swagger API docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
