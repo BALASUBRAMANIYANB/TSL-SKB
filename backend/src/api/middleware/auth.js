@@ -1,9 +1,16 @@
 const { verifyToken } = require('../../config/auth');
 const User = require('../../models/user');
 
-const authenticateToken = (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
+  let token;
   const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query.token) {
+    // Allow token to be passed as a query parameter for file downloads
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ message: 'Access denied. No token provided.' });
@@ -11,7 +18,12 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
-    req.user = decoded;
+    // Fetch the user from the database to get the role
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    req.user = user; // Attach user object to request
     next();
   } catch (error) {
     res.status(403).json({ message: 'Invalid token.' });

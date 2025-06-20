@@ -1,5 +1,6 @@
 const Scan = require('../../models/scan');
 const Target = require('../../models/target');
+const ScanTemplate = require('../../models/scanTemplate');
 
 // @desc    Get all scans
 // @route   GET /api/scans
@@ -59,29 +60,38 @@ exports.getScan = async (req, res) => {
   }
 };
 
-// @desc    Create scan
+// @desc    Create scan from a template
 // @route   POST /api/scans
 // @access  Private
 exports.createScan = async (req, res) => {
   try {
+    const { target: targetId, template: templateId } = req.body;
+
     // Verify target exists and user owns it
-    const target = await Target.findById(req.body.target);
+    const target = await Target.findById(targetId);
     if (!target) {
-      return res.status(404).json({
-        success: false,
-        error: 'Target not found'
-      });
+      return res.status(404).json({ success: false, error: 'Target not found' });
     }
-
     if (target.createdBy.toString() !== req.user.id) {
-      return res.status(401).json({
-        success: false,
-        error: 'Not authorized to scan this target'
-      });
+      return res.status(401).json({ success: false, error: 'Not authorized to scan this target' });
     }
 
+    // Verify template exists
+    const template = await ScanTemplate.findById(templateId);
+    if (!template) {
+      return res.status(404).json({ success: false, error: 'Scan template not found' });
+    }
+
+    // Create scan from template
     const scan = await Scan.create({
-      ...req.body,
+      name: `${template.name} - ${target.name}`,
+      target: targetId,
+      template: templateId,
+      scanType: template.scanType,
+      wazuhModule: template.wazuhModule,
+      wazuhParams: template.wazuhParams,
+      tools: template.tools,
+      toolConfig: template.toolConfig,
       createdBy: req.user.id,
       status: 'pending'
     });

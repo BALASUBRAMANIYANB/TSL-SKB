@@ -67,8 +67,21 @@ router.post('/', authenticateToken, validateScan, async (req, res) => {
 // @access  Private
 router.post('/:id/start', authenticateToken, async (req, res) => {
   try {
-    const scan = await scanService.startScan(req.params.id);
-    res.json(scan);
+    // The service now returns a promise that resolves when the scan is complete.
+    // We can await it, or respond immediately that it's been queued.
+    // Let's respond immediately to avoid long-running requests.
+    scanService.queueScan(req.params.id)
+      .then(scan => {
+        // This will be executed when the scan is finished.
+        // We can use web sockets or another mechanism to notify the client.
+        console.log(`Scan ${scan._id} completed.`);
+      })
+      .catch(error => {
+        // Handle errors that occur during the scan execution.
+        console.error(`Scan ${req.params.id} failed:`, error);
+      });
+
+    res.status(202).json({ message: 'Scan has been queued successfully.' });
   } catch (error) {
     console.error('Error starting scan:', error);
     res.status(500).json({ message: error.message });

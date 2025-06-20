@@ -109,149 +109,6 @@ import {
 import { API_URL } from '../../services/auth';
 import axios from 'axios';
 
-const scanPresets = {
-  quick: {
-    name: 'Quick Scan',
-    description: 'Basic security check focusing on common vulnerabilities',
-    stages: [
-      {
-        name: 'Port Scan',
-        description: 'Quick port scan to identify open services',
-        duration: '1-2 minutes',
-        checks: ['Common ports', 'Service detection'],
-      },
-      {
-        name: 'Basic Vulnerability Check',
-        description: 'Check for common security misconfigurations',
-        duration: '2-3 minutes',
-        checks: ['Default credentials', 'Outdated services', 'Basic misconfigurations'],
-      },
-    ],
-  },
-  standard: {
-    name: 'Standard Scan',
-    description: 'Comprehensive security assessment with moderate depth',
-    stages: [
-      {
-        name: 'Port Scan',
-        description: 'Detailed port scan with service enumeration',
-        duration: '3-5 minutes',
-        checks: ['All ports', 'Service detection', 'Version detection'],
-      },
-      {
-        name: 'Vulnerability Assessment',
-        description: 'Check for known vulnerabilities and misconfigurations',
-        duration: '5-10 minutes',
-        checks: ['Common vulnerabilities', 'Security misconfigurations', 'Weak configurations'],
-      },
-      {
-        name: 'Web Application Scan',
-        description: 'Basic web application security testing',
-        duration: '5-10 minutes',
-        checks: ['SQL injection', 'XSS', 'CSRF', 'Directory traversal'],
-      },
-    ],
-  },
-  thorough: {
-    name: 'Thorough Scan',
-    description: 'In-depth security analysis with advanced testing',
-    stages: [
-      {
-        name: 'Port Scan',
-        description: 'Comprehensive port and service analysis',
-        duration: '5-10 minutes',
-        checks: ['All ports', 'Service detection', 'Version detection', 'OS detection'],
-      },
-      {
-        name: 'Vulnerability Assessment',
-        description: 'Detailed vulnerability scanning',
-        duration: '10-15 minutes',
-        checks: ['All known vulnerabilities', 'Security misconfigurations', 'Weak configurations'],
-      },
-      {
-        name: 'Web Application Scan',
-        description: 'Advanced web application security testing',
-        duration: '15-20 minutes',
-        checks: ['All OWASP Top 10', 'Advanced injection tests', 'Authentication testing'],
-      },
-      {
-        name: 'Advanced Testing',
-        description: 'Specialized security testing',
-        duration: '10-15 minutes',
-        checks: ['Custom vulnerability checks', 'Advanced exploitation attempts', 'Privilege escalation'],
-      },
-    ],
-  },
-  custom: {
-    name: 'Custom Scan',
-    description: 'Configure your own scanning parameters',
-    stages: [],
-  },
-};
-
-const scanTemplates = {
-  owasp: {
-    name: 'OWASP Top 10',
-    description: 'Focuses on OWASP Top 10 vulnerabilities',
-    stages: [
-      {
-        name: 'Injection Testing',
-        description: 'SQL, NoSQL, Command Injection',
-        duration: '5-10 minutes',
-        checks: ['SQL Injection', 'NoSQL Injection', 'Command Injection'],
-      },
-      {
-        name: 'Authentication Testing',
-        description: 'Broken Authentication & Session Management',
-        duration: '5-10 minutes',
-        checks: ['Session Management', 'Password Policy', 'Multi-factor Authentication'],
-      },
-      {
-        name: 'Sensitive Data Exposure',
-        description: 'Data encryption and protection',
-        duration: '5-10 minutes',
-        checks: ['Data Encryption', 'Secure Headers', 'Cookie Security'],
-      },
-    ],
-  },
-  pci: {
-    name: 'PCI DSS Compliance',
-    description: 'Payment Card Industry compliance checks',
-    stages: [
-      {
-        name: 'Network Security',
-        description: 'Network segmentation and access control',
-        duration: '10-15 minutes',
-        checks: ['Network Segmentation', 'Firewall Rules', 'Access Control'],
-      },
-      {
-        name: 'Data Protection',
-        description: 'Cardholder data protection',
-        duration: '10-15 minutes',
-        checks: ['Data Encryption', 'Key Management', 'Secure Storage'],
-      },
-    ],
-  },
-  iso27001: {
-    name: 'ISO 27001',
-    description: 'Information security management system checks',
-    stages: [
-      {
-        name: 'Access Control',
-        description: 'User access management',
-        duration: '10-15 minutes',
-        checks: ['User Management', 'Access Rights', 'Password Policy'],
-      },
-      {
-        name: 'Cryptography',
-        description: 'Encryption and key management',
-        duration: '10-15 minutes',
-        checks: ['Encryption Policy', 'Key Management', 'Cryptographic Controls'],
-      },
-    ],
-  },
-};
-
 const severityLevels = {
   critical: {
     label: 'Critical',
@@ -341,36 +198,78 @@ const getTargetHelperText = (type) => {
 const RISK_WEIGHTS = {
   critical: {
     base: 10,
-    factors: {
-      exploitability: 1.5,
-      impact: 2.0,
-      prevalence: 1.2,
-    },
+  }
+};
+
+// Scan presets for different security assessment types
+const scanPresets = {
+  quick: {
+    name: 'Quick Scan',
+    description: 'Basic security assessment with minimal impact',
+    duration: '5-10 minutes',
+    intensity: 'Low',
+    checks: ['basic-security', 'common-vulnerabilities']
   },
-  high: {
-    base: 7,
-    factors: {
-      exploitability: 1.3,
-      impact: 1.5,
-      prevalence: 1.1,
-    },
+  standard: {
+    name: 'Standard Scan',
+    description: 'Balanced security assessment for most use cases',
+    duration: '15-30 minutes',
+    intensity: 'Medium',
+    checks: ['basic-security', 'common-vulnerabilities', 'configuration-review']
   },
-  medium: {
-    base: 4,
-    factors: {
-      exploitability: 1.1,
-      impact: 1.2,
-      prevalence: 1.0,
-    },
+  comprehensive: {
+    name: 'Comprehensive Scan',
+    description: 'In-depth security assessment with all available checks',
+    duration: '30-60 minutes',
+    intensity: 'High',
+    checks: ['basic-security', 'common-vulnerabilities', 'configuration-review', 'advanced-threats']
+  }
+};
+
+// Scan templates for different target types
+const scanTemplates = {
+  webApplication: {
+    name: 'Web Application',
+    targetType: 'url',
+    checks: ['xss', 'sql-injection', 'csrf', 'authentication'],
+    rules: ['web-attacks', 'injection-attacks']
   },
-  low: {
-    base: 1,
-    factors: {
-      exploitability: 1.0,
-      impact: 1.0,
-      prevalence: 0.9,
-    },
+  network: {
+    name: 'Network Infrastructure',
+    targetType: 'ip',
+    checks: ['port-scan', 'service-detection', 'vulnerability-assessment'],
+    rules: ['network-attacks', 'reconnaissance']
   },
+  server: {
+    name: 'Server Security',
+    targetType: 'domain',
+    checks: ['os-security', 'patch-management', 'configuration-audit'],
+    rules: ['system-hardening', 'compliance']
+  }
+};
+
+// Scan stages for progress tracking
+const stages = {
+  preparation: {
+    name: 'Preparation',
+    description: 'Setting up scan parameters and validating targets'
+  },
+  discovery: {
+    name: 'Discovery',
+    description: 'Identifying active services and entry points'
+  },
+  scanning: {
+    name: 'Scanning',
+    description: 'Running security checks and vulnerability assessment'
+  },
+  analysis: {
+    name: 'Analysis',
+    description: 'Processing results and generating reports'
+  },
+  completion: {
+    name: 'Completion',
+    description: 'Finalizing scan and preparing summary'
+  }
 };
 
 const VISUALIZATION_TYPES = {
@@ -522,7 +421,15 @@ const EXPORT_FORMATS = {
   },
 };
 
-const ScanForm = ({ targets, onSubmit, onCancel }) => {
+const AUTH_TYPES = [
+  { value: 'none', label: 'None' },
+  { value: 'basic', label: 'Basic (Username/Password)' },
+  { value: 'cookie', label: 'Session Cookie' },
+  { value: 'bearer', label: 'Bearer Token' },
+  { value: 'custom', label: 'Custom Headers' },
+];
+
+const ScanForm = ({ targets = [], onSubmit, onCancel }) => {
   const [selectedPreset, setSelectedPreset] = useState('standard');
   const [scanConfig, setScanConfig] = useState({
     name: '',
@@ -648,6 +555,9 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
     compliance: [],
     customFilters: {},
   });
+  const [activeStep, setActiveStep] = useState(0);
+  const [targetType, setTargetType] = useState('url');
+  const [auth, setAuth] = useState({ type: 'none', username: '', password: '', cookie: '', token: '', customHeaders: '' });
 
   useEffect(() => {
     // Cleanup WebSocket connection on component unmount
@@ -705,6 +615,11 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
     }));
   };
 
+  const handleAuthChange = (e) => {
+    const { name, value } = e.target;
+    setAuth((prev) => ({ ...prev, [name]: value }));
+  };
+
   const startScan = async (e) => {
     e.preventDefault();
     if (targetError) return;
@@ -740,16 +655,26 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
 
     // Submit scan configuration
     try {
+      const scanData = {
+        ...scanConfig,
+        stages: scanConfig.preset === 'custom' ? scanConfig.customStages : scanPresets[scanConfig.preset].stages,
+        auth: {
+          type: auth.type,
+          username: auth.type === 'basic' ? auth.username : undefined,
+          password: auth.type === 'basic' ? auth.password : undefined,
+          cookie: auth.type === 'cookie' ? auth.cookie : undefined,
+          token: auth.type === 'bearer' ? auth.token : undefined,
+          customHeaders: auth.type === 'custom' ? JSON.parse(auth.customHeaders || '{}') : undefined,
+        },
+      };
+
       const response = await fetch(`${API_URL}/scans`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({
-          ...scanConfig,
-          stages: scanConfig.preset === 'custom' ? scanConfig.customStages : scanPresets[scanConfig.preset].stages,
-        }),
+        body: JSON.stringify(scanData),
       });
 
       if (!response.ok) {
@@ -1231,7 +1156,7 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
       highFindings: findings.filter(f => f.severity === 'high').length,
       mediumFindings: findings.filter(f => f.severity === 'medium').length,
       lowFindings: findings.filter(f => f.severity === 'low').length,
-      scanDuration: scanResults.duration || 0,
+      scanDuration: scanResults?.duration || 0,
       scanDate: new Date(),
     };
 
@@ -1244,7 +1169,7 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
       references: finding.references || [],
     }));
 
-    const timeline = scanResults.stages.map(stage => ({
+    const timeline = stages.map(stage => ({
       timestamp: stage.timestamp,
       stage: stage.name,
       status: stage.status,
@@ -1927,44 +1852,6 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
           </Paper>
         </Grid>
 
-        {/* Scan Stages */}
-        {selectedPreset !== 'custom' && (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                Scan Stages
-              </Typography>
-              <Stepper orientation="vertical">
-                {scanPresets[selectedPreset].stages.map((stage, index) => (
-                  <Step key={index} active={true}>
-                    <StepLabel>
-                      <Typography variant="subtitle1">{stage.name}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {stage.description}
-                      </Typography>
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
-                          Estimated duration: {stage.duration}
-                        </Typography>
-                        <Box sx={{ mt: 1 }}>
-                          {stage.checks.map((check, checkIndex) => (
-                            <Chip
-                              key={checkIndex}
-                              label={check}
-                              size="small"
-                              sx={{ mr: 1, mb: 1 }}
-                            />
-                          ))}
-                        </Box>
-                      </Box>
-                    </StepLabel>
-                  </Step>
-                ))}
-              </Stepper>
-            </Paper>
-          </Grid>
-        )}
-
         {/* Scheduling Options */}
         <Grid item xs={12}>
           <Paper sx={{ p: 2 }}>
@@ -2428,6 +2315,34 @@ const ScanForm = ({ targets, onSubmit, onCancel }) => {
                 </>
               )}
             </Grid>
+          </Paper>
+        </Grid>
+
+        {/* Authentication */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 2, mt: 3 }} elevation={2}>
+            <Typography variant="h6" gutterBottom>Authentication</Typography>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Auth Type</InputLabel>
+              <Select name="type" value={auth.type} label="Auth Type" onChange={handleAuthChange}>
+                {AUTH_TYPES.map(opt => <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+            {auth.type === 'basic' && (
+              <>
+                <TextField label="Username" name="username" value={auth.username} onChange={handleAuthChange} fullWidth sx={{ mb: 2 }} />
+                <TextField label="Password" name="password" value={auth.password} onChange={handleAuthChange} type="password" fullWidth sx={{ mb: 2 }} />
+              </>
+            )}
+            {auth.type === 'cookie' && (
+              <TextField label="Session Cookie" name="cookie" value={auth.cookie} onChange={handleAuthChange} fullWidth sx={{ mb: 2 }} />
+            )}
+            {auth.type === 'bearer' && (
+              <TextField label="Bearer Token" name="token" value={auth.token} onChange={handleAuthChange} fullWidth sx={{ mb: 2 }} />
+            )}
+            {auth.type === 'custom' && (
+              <TextField label="Custom Headers (JSON)" name="customHeaders" value={auth.customHeaders} onChange={handleAuthChange} fullWidth sx={{ mb: 2 }} />
+            )}
           </Paper>
         </Grid>
 

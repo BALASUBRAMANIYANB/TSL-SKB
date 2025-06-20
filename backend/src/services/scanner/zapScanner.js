@@ -1,200 +1,113 @@
-const BaseScanner = require('./baseScanner');
 const axios = require('axios');
-const { spawn } = require('child_process');
-const path = require('path');
+const baseScanner = require('./baseScanner');
 
-class ZapScanner extends BaseScanner {
+class ZapScanner extends baseScanner {
   constructor(config) {
     super(config);
-    this.zapPath = process.env.ZAP_PATH || 'zap-cli';
-    this.apiKey = process.env.ZAP_API_KEY;
-    this.port = process.env.ZAP_PORT || 8090;
+    this.zapApi = config.zapApi || 'http://localhost:8080'; // ZAP API endpoint
+    this.target = config.target;
+    this.auth = config.auth || { type: 'none' };
   }
 
   async initialize() {
-    try {
-      // Start ZAP daemon if not running
-      await this.startZapDaemon();
-      
-      // Wait for ZAP to be ready
-      await this.waitForZap();
-      
-      // Set up the scan context
-      await this.setupContext();
-      
-      return true;
-    } catch (error) {
-      throw new Error(`Failed to initialize ZAP scanner: ${error.message}`);
-    }
-  }
-
-  async start() {
-    try {
-      this.isRunning = true;
-      this.updateProgress(0, 'Starting ZAP scan');
-
-      // Start the scan
-      const scanId = await this.startScan();
-      
-      // Monitor scan progress
-      await this.monitorProgress(scanId);
-      
-      // Get results
-      const results = await this.getResults();
-      
-      // Process and format results
-      const vulnerabilities = await this.processResults(results);
-      
-      this.isRunning = false;
-      this.updateProgress(100, 'Scan completed');
-      
-      return vulnerabilities;
-    } catch (error) {
-      this.isRunning = false;
-      throw new Error(`ZAP scan failed: ${error.message}`);
-    }
-  }
-
-  async stop() {
-    try {
-      if (!this.isRunning) return;
-      
-      // Stop the active scan
-      await axios.get(`http://localhost:${this.port}/JSON/ascan/action/stopAllScans/`, {
-        params: { apikey: this.apiKey }
-      });
-      
-      this.isRunning = false;
-      this.updateProgress(0, 'Scan stopped');
-    } catch (error) {
-      throw new Error(`Failed to stop ZAP scan: ${error.message}`);
-    }
-  }
-
-  async validateConfig() {
-    const required = ['target', 'level'];
-    const missing = required.filter(field => !this.config[field]);
-    
-    if (missing.length > 0) {
-      throw new Error(`Missing required configuration: ${missing.join(', ')}`);
-    }
-    
+    // Optionally: check ZAP is running, clean up previous sessions, etc.
     return true;
   }
 
-  async processResults(results) {
-    return results.alerts.map(alert => this.formatVulnerability({
-      name: alert.name,
-      description: alert.description,
-      severity: alert.risk,
-      cvssScore: alert.cvss,
-      cweId: alert.cweid,
-      cveId: alert.cveid,
-      location: {
-        url: alert.url,
-        method: alert.method,
-        parameter: alert.param,
-        evidence: alert.evidence
-      },
-      request: alert.request,
-      response: alert.response,
-      remediation: {
-        description: alert.solution,
-        references: alert.reference ? [alert.reference] : []
-      }
-    }));
+  async start() {
+    // 1. Set up authentication if needed
+    if (this.auth.type && this.auth.type !== 'none') {
+      await this.configureAuth();
+    }
+    // 2. Spider the target
+    await this.spiderTarget();
+    // 3. Active scan
+    const scanId = await this.activeScan();
+    // 4. Poll for completion
+    await this.waitForScan(scanId);
+    // 5. Fetch results
+    return await this.getResults();
   }
 
-  async startZapDaemon() {
-    return new Promise((resolve, reject) => {
-      const zap = spawn(this.zapPath, [
-        'daemon',
-        '-p', this.port,
-        '-n',
-        '-I'
-      ]);
-
-      zap.on('error', (error) => {
-        reject(new Error(`Failed to start ZAP daemon: ${error.message}`));
-      });
-
-      zap.on('exit', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`ZAP daemon exited with code ${code}`));
-        }
-      });
-    });
-  }
-
-  async waitForZap() {
-    const maxAttempts = 30;
-    const delay = 1000;
-
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        await axios.get(`http://localhost:${this.port}/JSON/core/view/version/`, {
-          params: { apikey: this.apiKey }
+  async configureAuth() {
+    // This is a simplified example. In production, you may want to use ZAP contexts and session mgmt.
+    switch (this.auth.type) {
+      case 'basic':
+        // Set HTTP Basic Auth header for all requests
+        await axios.post(`${this.zapApi}/JSON/httpSessions/action/addDefaultSessionToken/`, {
+          sessionToken: 'Authorization',
+          tokenValue: 'Basic ' + Buffer.from(`${this.auth.username}:${this.auth.password}`).toString('base64'),
         });
-        return;
-      } catch (error) {
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    throw new Error('ZAP daemon failed to start');
-  }
-
-  async setupContext() {
-    const { target, authConfig } = this.config;
-    
-    // Create a new context
-    const contextId = await this.createContext();
-    
-    // Add target to context
-    await this.addTargetToContext(contextId, target);
-    
-    // Configure authentication if provided
-    if (authConfig) {
-      await this.configureAuthentication(contextId, authConfig);
-    }
-    
-    // Set scan level
-    await this.setScanLevel(this.config.level);
-  }
-
-  async startScan() {
-    const response = await axios.get(`http://localhost:${this.port}/JSON/ascan/action/scan/`, {
-      params: {
-        apikey: this.apiKey,
-        url: this.config.target,
-        recurse: true,
-        inScopeOnly: true
-      }
-    });
-    
-    return response.data.scan;
-  }
-
-  async monitorProgress(scanId) {
-    while (this.isRunning) {
-      const status = await this.getScanStatus(scanId);
-      this.updateProgress(status.progress, status.status);
-      
-      if (status.status === 'FINISHED') {
         break;
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      case 'cookie':
+        // Set cookie header
+        await axios.post(`${this.zapApi}/JSON/httpSessions/action/addDefaultSessionToken/`, {
+          sessionToken: 'Cookie',
+          tokenValue: this.auth.cookie,
+        });
+        break;
+      case 'bearer':
+        // Set Bearer token header
+        await axios.post(`${this.zapApi}/JSON/httpSessions/action/addDefaultSessionToken/`, {
+          sessionToken: 'Authorization',
+          tokenValue: 'Bearer ' + this.auth.token,
+        });
+        break;
+      case 'custom':
+        // Set custom headers
+        for (const [header, value] of Object.entries(this.auth.customHeaders || {})) {
+          await axios.post(`${this.zapApi}/JSON/httpSessions/action/addDefaultSessionToken/`, {
+            sessionToken: header,
+            tokenValue: value,
+          });
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  async spiderTarget() {
+    await axios.get(`${this.zapApi}/JSON/spider/action/scan/`, {
+      params: { url: this.target, maxChildren: 0 }
+    });
+  }
+
+  async activeScan() {
+    const resp = await axios.get(`${this.zapApi}/JSON/ascan/action/scan/`, {
+      params: { url: this.target }
+    });
+    return resp.data.scan; // scan ID
+  }
+
+  async waitForScan(scanId) {
+    let progress = 0;
+    while (progress < 100) {
+      const resp = await axios.get(`${this.zapApi}/JSON/ascan/view/status/`, {
+        params: { scanId }
+      });
+      progress = parseInt(resp.data.status, 10);
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 
   async getResults() {
-    const response = await axios.get(`http://localhost:${this.port}/JSON/core/view/alerts/`, {
-      params: { apikey: this.apiKey }
+    // Fetch alerts (vulnerabilities)
+    const resp = await axios.get(`${this.zapApi}/JSON/core/view/alerts/`, {
+      params: { baseurl: this.target, start: 0, count: 1000 }
     });
-    
-    return response.data;
+    // Map ZAP alerts to our vulnerability format
+    return (resp.data.alerts || []).map(alert => ({
+      name: alert.name,
+      description: alert.description,
+      severity: alert.risk,
+      cweId: alert.cweid,
+      url: alert.url,
+      evidence: alert.evidence,
+      remediation: { description: alert.solution },
+      tool: 'zap',
+      toolSpecificData: alert
+    }));
   }
 }
 

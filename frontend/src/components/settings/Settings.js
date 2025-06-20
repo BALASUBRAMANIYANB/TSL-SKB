@@ -67,6 +67,9 @@ import {
 } from '@mui/icons-material';
 import { API_URL } from '../../services/auth';
 import axios from 'axios';
+import ScannerSettings from './ScannerSettings';
+import IntegrationsSettings from './IntegrationsSettings';
+import WebhooksSettings from './WebhooksSettings';
 
 const Settings = () => {
   // State for active tab
@@ -207,6 +210,27 @@ const Settings = () => {
   // Handle snackbar close
   const handleSnackbarClose = () => {
     setSnackbar({ ...snackbar, open: false });
+  };
+
+  // Handle scanner settings save
+  const handleScannerSettingsSave = async (scannerSettings) => {
+    try {
+      await axios.post(`${API_URL}/settings/scanner`, scannerSettings, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+
+      setSnackbar({
+        open: true,
+        message: 'Scanner settings saved successfully',
+        severity: 'success',
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: 'Failed to save scanner settings',
+        severity: 'error',
+      });
+    }
   };
 
   // Render General Settings
@@ -637,18 +661,22 @@ const Settings = () => {
             <Tab icon={<SettingsIcon />} label="General" />
             <Tab icon={<NotificationsIcon />} label="Notifications" />
             <Tab icon={<SecurityIcon />} label="Security" />
-            <Tab icon={<SpeedIcon />} label="Scan" />
+            <Tab icon={<SpeedIcon />} label="Scanner" />
             <Tab icon={<StorageIcon />} label="Storage" />
             <Tab icon={<CodeIcon />} label="API" />
+            <Tab icon={<BugReportIcon />} label="Integrations" />
+            <Tab icon={<TimelineIcon />} label="Webhooks" />
           </Tabs>
         </Box>
 
         {activeTab === 0 && renderGeneralSettings()}
         {activeTab === 1 && renderNotificationSettings()}
         {activeTab === 2 && renderSecuritySettings()}
-        {activeTab === 3 && renderScanSettings()}
+        {activeTab === 3 && <ScannerSettings settings={scanSettings} onSave={handleScannerSettingsSave} />}
         {activeTab === 4 && renderStorageSettings()}
         {activeTab === 5 && renderApiSettings()}
+        {activeTab === 6 && <IntegrationsSettings />}
+        {activeTab === 7 && <WebhooksSettings />}
 
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
           <Button

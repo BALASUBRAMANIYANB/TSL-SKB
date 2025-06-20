@@ -1,119 +1,73 @@
 const cron = require('node-cron');
+const ScanTemplate = require('../models/scanTemplate');
 const Scan = require('../models/scan');
 const scanService = require('./scanService');
-const { sendNotification } = require('./notificationService');
+const logger = require('../utils/logger');
 
 class SchedulerService {
   constructor() {
     this.jobs = new Map();
-    this.initializeScheduledScans();
   }
 
-  async initializeScheduledScans() {
-    try {
-      const scheduledScans = await Scan.find({
-        'schedule.type': { $in: ['daily', 'weekly', 'monthly'] },
-        status: { $ne: 'cancelled' }
-      });
-
-      scheduledScans.forEach(scan => {
-        this.scheduleScan(scan);
-      });
-    } catch (error) {
-      console.error('Error initializing scheduled scans:', error);
+  async initialize() {
+    logger.info('Initializing scheduler...');
+    const templates = await ScanTemplate.find({ isScheduled: true, schedule: { $ne: null } });
+    for (const template of templates) {
+      this.scheduleScan(template);
     }
+    logger.info(`Scheduler initialized with ${this.jobs.size} jobs.`);
   }
 
-  scheduleScan(scan) {
-    if (this.jobs.has(scan._id.toString())) {
-      this.jobs.get(scan._id.toString()).stop();
+  scheduleScan(template) {
+    if (!cron.validate(template.schedule)) {
+      logger.error(`Invalid cron string for template ${template._id}: ${template.schedule}`);
+      return;
     }
 
-    const cronExpression = this.getCronExpression(scan.schedule);
-    if (!cronExpression) return;
+    // If a job for this template already exists, cancel it first.
+    if (this.jobs.has(template._id.toString())) {
+      this.cancelScan(template._id);
+    }
 
-    const job = cron.schedule(cronExpression, async () => {
+    const job = cron.schedule(template.schedule, async () => {
+      logger.info(`Triggering scheduled scan for template: ${template.name}`);
       try {
-        // Create a new scan instance
-        const newScan = await Scan.create({
-          target: scan.target,
-          tools: scan.tools,
-          toolConfig: scan.toolConfig,
-          schedule: scan.schedule,
-          createdBy: scan.createdBy,
-          parentScan: scan._id
+        const scan = await Scan.create({
+          name: `${template.name} (Scheduled)`,
+          description: template.description,
+          target: template.target, // Assuming template has a target
+          scanType: template.scanType,
+          // Copy other relevant fields from template to scan
+          ...template.toolConfig,
+          createdBy: template.createdBy,
+          status: 'pending' // It will be queued by the service
         });
-
-        // Start the scan
-        await scanService.startScan(newScan._id);
-
-        // Send notification
-        await sendNotification({
-          type: 'scan_started',
-          userId: scan.createdBy,
-          data: {
-            scanId: newScan._id,
-            target: scan.target,
-            schedule: scan.schedule
-          }
-        });
+        await scanService.queueScan(scan._id);
+        logger.info(`Scan ${scan._id} created and queued from template.`);
       } catch (error) {
-        console.error('Error executing scheduled scan:', error);
-        await sendNotification({
-          type: 'scan_failed',
-          userId: scan.createdBy,
-          data: {
-            scanId: scan._id,
-            error: error.message
-          }
-        });
+        logger.error(`Failed to create/queue scan from template ${template._id}:`, error);
       }
     });
 
-    this.jobs.set(scan._id.toString(), job);
+    this.jobs.set(template._id.toString(), job);
+    logger.info(`Scan template ${template.name} scheduled with cron: ${template.schedule}`);
   }
 
-  getCronExpression(schedule) {
-    const [hours, minutes] = schedule.time.split(':').map(Number);
-
-    switch (schedule.type) {
-      case 'daily':
-        return `${minutes} ${hours} * * *`;
-      
-      case 'weekly':
-        if (!schedule.days || schedule.days.length === 0) return null;
-        return `${minutes} ${hours} * * ${schedule.days.join(',')}`;
-      
-      case 'monthly':
-        if (!schedule.days || schedule.days.length === 0) return null;
-        return `${minutes} ${hours} ${schedule.days.join(',')} * *`;
-      
-      default:
-        return null;
-    }
-  }
-
-  async updateSchedule(scanId, schedule) {
-    const scan = await Scan.findById(scanId);
-    if (!scan) return;
-
-    scan.schedule = schedule;
-    await scan.save();
-
-    this.scheduleScan(scan);
-  }
-
-  async removeSchedule(scanId) {
-    const job = this.jobs.get(scanId.toString());
-    if (job) {
+  cancelScan(templateId) {
+    const jobId = templateId.toString();
+    if (this.jobs.has(jobId)) {
+      const job = this.jobs.get(jobId);
       job.stop();
-      this.jobs.delete(scanId.toString());
+      this.jobs.delete(jobId);
+      logger.info(`Cancelled scheduled scan for template ${jobId}`);
     }
+  }
 
-    await Scan.findByIdAndUpdate(scanId, {
-      'schedule.type': 'once'
-    });
+  getScheduledJobs() {
+    return Array.from(this.jobs.keys());
   }
 }
 
-module.exports = new SchedulerService(); 
+// Singleton instance
+const schedulerService = new SchedulerService();
+module.exports = schedulerService; 

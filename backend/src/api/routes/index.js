@@ -8,6 +8,8 @@ const scanTemplateRoutes = require('./scanTemplates');
 const metricsRoutes = require('./metrics');
 const wazuhRoutes = require('./wazuh');
 const testAutomationRoutes = require('./testAutomation');
+const settingsRoutes = require('./settings');
+const topologyRouter = require('./topology');
 
 router.use('/users', userRoutes);
 router.use('/targets', targetRoutes);
@@ -17,5 +19,7 @@ router.use('/scan-templates', scanTemplateRoutes);
 router.use('/metrics', metricsRoutes);
 router.use('/wazuh', wazuhRoutes);
 router.use('/test-automation', testAutomationRoutes);
+router.use('/settings', settingsRoutes);
+router.use('/topology', topologyRouter);
 
 module.exports = router; 

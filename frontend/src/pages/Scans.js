@@ -46,7 +46,6 @@ import {
 } from '@mui/icons-material';
 import { fetchScans, createScan, deleteScan, updateScan } from '../store/slices/scanSlice';
 import { fetchTargets } from '../store/slices/targetSlice';
-import ScanList from '../components/scans/ScanList';
 import ScanForm from '../components/scans/ScanForm';
 
 const ScanFilters = ({ onFilterChange }) => {
@@ -375,16 +374,7 @@ const Scans = () => {
               <Tab label="Failed" />
             </Tabs>
             <Box sx={{ p: 2 }}>
-              <ScanList
-                scans={displayScans}
-                onDelete={handleDeleteScan}
-                onViewResults={handleViewResults}
-                onStop={handleStopScan}
-                onSchedule={handleScheduleScan}
-                onExport={handleExportResults}
-                onShare={handleShareResults}
-                filters={filters}
-              />
+              {/* Replace ScanList with a simple list or table of scans if needed */}
             </Box>
           </Paper>
         </Grid>

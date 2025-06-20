@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Container,
@@ -14,6 +14,8 @@ import {
   Divider,
   Card,
   CardContent,
+  Alert,
+  AlertTitle,
 } from '@mui/material';
 import {
   Timeline,
@@ -53,6 +55,12 @@ import {
 import { fetchScans } from '../store/slices/scanSlice';
 import { fetchTargets } from '../store/slices/targetSlice';
 import { fetchReports } from '../store/slices/reportSlice';
+import WazuhOverview from '../components/dashboard/WazuhOverview';
+import RecentScans from '../components/dashboard/RecentScans';
+import ScheduledScans from '../components/dashboard/ScheduledScans';
+import api from '../services/api';
+import { getManagerStats } from '../services/wazuhApi';
+import { Link } from 'react-router-dom';
 
 // Register ChartJS components
 ChartJS.register(
@@ -274,7 +282,7 @@ const VulnerabilityTrendChart = ({ scans }) => {
   );
 };
 
-const SystemHealthStatus = ({ targets }) => {
+const SystemHealthStatus = ({ targets = [] }) => {
   const getHealthStatus = (target) => {
     // Example health status calculation
     const status = {
@@ -369,17 +377,53 @@ const SystemHealthStatus = ({ targets }) => {
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  const { items: scans = [], status: scansLoading } = useSelector((state) => state.scans);
-  const { items: targets = [], status: targetsLoading } = useSelector((state) => state.targets);
+  const { scans, isLoading: scansLoading } = useSelector((state) => state.scans);
+  const { targets, isLoading: targetsLoading } = useSelector((state) => state.targets);
   const { status: reportsLoading } = useSelector((state) => state.reports);
+  const [wazuhData, setWazuhData] = useState(null);
+  const [wazuhLoading, setWazuhLoading] = useState(true);
+  const [wazuhConfigured, setWazuhConfigured] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
   useEffect(() => {
     dispatch(fetchScans());
     dispatch(fetchTargets());
-    dispatch(fetchReports());
+    
+    const checkWazuhConfig = async () => {
+      try {
+        setWazuhLoading(true);
+        // This call will fail if not configured, which is what we want to check
+        const response = await getManagerStats(); 
+        setWazuhData(response.data);
+        setWazuhConfigured(true);
+      } catch (error) {
+        console.error("Wazuh not configured or connection failed:", error);
+        setWazuhConfigured(false);
+      } finally {
+        setWazuhLoading(false);
+      }
+    };
+    
+    const getTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        const response = await api.get('/scan-templates');
+        setTemplates(response.data);
+      } catch (error) {
+        console.error("Failed to fetch scan templates:", error);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
+
+    checkWazuhConfig();
+    getTemplates();
   }, [dispatch]);
 
-  if (scansLoading === 'loading' || targetsLoading === 'loading' || reportsLoading === 'loading') {
+  const isLoading = scansLoading || targetsLoading || templatesLoading;
+
+  if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
         <CircularProgress />
@@ -405,131 +449,141 @@ const Dashboard = () => {
   ));
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" component="h1">
-          Security Dashboard
-        </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={() => {
-            dispatch(fetchScans());
-            dispatch(fetchTargets());
-            dispatch(fetchReports());
-          }}
-        >
-          Refresh
-        </Button>
-      </Box>
+    <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
+      <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
+        Dashboard
+      </Typography>
+      {!wazuhConfigured && !wazuhLoading && (
+        <Alert severity="warning" sx={{ mb: 4 }}>
+          <AlertTitle>Wazuh Not Configured</AlertTitle>
+          The Wazuh integration is not configured. Please go to the settings page to enter your API key.
+          <Button component={Link} to="/settings" variant="contained" size="small" sx={{ ml: 2 }}>
+            Go to Settings
+          </Button>
+        </Alert>
+      )}
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Grid container spacing={4}>
+          <Grid item xs={12}>
+            <WazuhOverview wazuhData={wazuhData} isLoading={wazuhLoading || !wazuhConfigured} />
+          </Grid>
+          {/* Recent and Scheduled Scans */}
+          <Grid item xs={12} md={6}>
+            <RecentScans scans={scans} isLoading={scansLoading} />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <ScheduledScans templates={templates} isLoading={templatesLoading} />
+          </Grid>
+          
+          {/* Security Score and Vulnerability Trend */}
+          <Grid item xs={12} md={4}>
+            <SecurityScoreCard score={securityScore} />
+          </Grid>
+          <Grid item xs={12} md={8}>
+            <VulnerabilityTrendChart scans={scans} />
+          </Grid>
 
-      <Grid container spacing={3}>
-        {/* Security Score */}
-        <Grid item xs={12} md={4}>
-          <SecurityScoreCard score={securityScore} />
-        </Grid>
-
-        {/* Statistics Cards */}
-        <Grid item xs={12} md={8}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6}>
-              <StatCard
-                title="Total Scans"
-                value={scans?.length || 0}
-                icon={<AssessmentIcon color="primary" />}
-                color="primary.main"
-                trend={5}
-                subtitle="Last 30 days"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <StatCard
-                title="Active Targets"
-                value={targets?.length || 0}
-                icon={<SecurityIcon color="success" />}
-                color="success.main"
-                trend={2}
-                subtitle="Monitored systems"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <StatCard
-                title="Total Vulnerabilities"
-                value={totalVulnerabilities}
-                icon={<BugReportIcon color="error" />}
-                color="error.main"
-                trend={-8}
-                subtitle="Across all systems"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <StatCard
-                title="Critical Issues"
-                value={criticalVulnerabilities}
-                icon={<WarningIcon color="warning" />}
-                color="warning.main"
-                trend={-12}
-                subtitle="Requires immediate attention"
-              />
+          {/* Statistics Cards */}
+          <Grid item xs={12} md={8}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={6}>
+                <StatCard
+                  title="Total Scans"
+                  value={scans?.length || 0}
+                  icon={<AssessmentIcon color="primary" />}
+                  color="primary.main"
+                  trend={5}
+                  subtitle="Last 30 days"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <StatCard
+                  title="Active Targets"
+                  value={targets?.length || 0}
+                  icon={<SecurityIcon color="success" />}
+                  color="success.main"
+                  trend={2}
+                  subtitle="Monitored systems"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <StatCard
+                  title="Total Vulnerabilities"
+                  value={totalVulnerabilities}
+                  icon={<BugReportIcon color="error" />}
+                  color="error.main"
+                  trend={-8}
+                  subtitle="Across all systems"
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <StatCard
+                  title="Critical Issues"
+                  value={criticalVulnerabilities}
+                  icon={<WarningIcon color="warning" />}
+                  color="warning.main"
+                  trend={-12}
+                  subtitle="Requires immediate attention"
+                />
+              </Grid>
             </Grid>
           </Grid>
-        </Grid>
 
-        {/* Quick Actions */}
-        <Grid item xs={12} md={4}>
-          <QuickActions />
-        </Grid>
+          {/* Quick Actions */}
+          <Grid item xs={12} md={4}>
+            <QuickActions />
+          </Grid>
 
-        {/* Vulnerability Trend Chart */}
-        <Grid item xs={12} md={8}>
-          <VulnerabilityTrendChart scans={scans} />
-        </Grid>
+          {/* System Health Status */}
+          <Grid item xs={12}>
+            <SystemHealthStatus targets={targets} />
+          </Grid>
 
-        {/* System Health Status */}
-        <Grid item xs={12}>
-          <SystemHealthStatus targets={targets} />
-        </Grid>
-
-        {/* Recent Activity */}
-        <Grid item xs={12}>
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Activity
-            </Typography>
-            <Timeline>
-              {recentScans.map((scan) => (
-                <TimelineItem key={scan?._id || Math.random()}>
-                  <TimelineSeparator>
-                    <TimelineDot 
-                      color={scan?.status === 'completed' ? 'success' : 'primary'}
-                      sx={{ 
-                        boxShadow: '0 0 0 4px rgba(0,0,0,0.1)',
-                      }}
-                    />
-                    <TimelineConnector />
-                  </TimelineSeparator>
-                  <TimelineContent>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-                      {scan?.target?.name || 'Unknown Target'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Status: {scan?.status || 'unknown'}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {scan?.createdAt ? new Date(scan.createdAt).toLocaleString() : 'Unknown date'}
-                    </Typography>
-                    {scan?.results?.findings?.length > 0 && (
-                      <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
-                        {scan.results.findings.length} vulnerabilities found
+          {/* Recent Activity */}
+          <Grid item xs={12}>
+            <Paper elevation={3} sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Recent Activity
+              </Typography>
+              <Timeline>
+                {recentScans.map((scan) => (
+                  <TimelineItem key={scan?._id || Math.random()}>
+                    <TimelineSeparator>
+                      <TimelineDot 
+                        color={scan?.status === 'completed' ? 'success' : 'primary'}
+                        sx={{ 
+                          boxShadow: '0 0 0 4px rgba(0,0,0,0.1)',
+                        }}
+                      />
+                      <TimelineConnector />
+                    </TimelineSeparator>
+                    <TimelineContent>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                        {scan?.target?.name || 'Unknown Target'}
                       </Typography>
-                    )}
-                  </TimelineContent>
-                </TimelineItem>
-              ))}
-            </Timeline>
-          </Paper>
+                      <Typography variant="body2" color="text.secondary">
+                        Status: {scan?.status || 'unknown'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {scan?.createdAt ? new Date(scan.createdAt).toLocaleString() : 'Unknown date'}
+                      </Typography>
+                      {scan?.results?.findings?.length > 0 && (
+                        <Typography variant="body2" color="error.main" sx={{ mt: 0.5 }}>
+                          {scan.results.findings.length} vulnerabilities found
+                        </Typography>
+                      )}
+                    </TimelineContent>
+                  </TimelineItem>
+                ))}
+              </Timeline>
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
+      )}
     </Container>
   );
 };

@@ -37,14 +37,22 @@ const Reports = () => {
   const [selectedReport, setSelectedReport] = useState(null);
   const [viewReport, setViewReport] = useState(false);
   const [reportFormat, setReportFormat] = useState('pdf');
+  const [selectedScan, setSelectedScan] = useState('');
 
   useEffect(() => {
     dispatch(fetchReports());
     dispatch(fetchScans());
   }, [dispatch]);
 
-  const handleCreateReport = async (reportData) => {
-    await dispatch(createReport(reportData));
+  const handleCreateReport = async () => {
+    if (!selectedScan) {
+      console.error('No scan selected');
+      return;
+    }
+    await dispatch(createReport({ 
+      scan: selectedScan,
+      format: reportFormat 
+    }));
     setOpenForm(false);
   };
 
@@ -60,17 +68,14 @@ const Reports = () => {
   };
 
   const handleDownloadReport = (report) => {
-    if (!report?.downloadUrl) {
-      console.error('No download URL available for this report');
+    if (report.status !== 'completed' || !report.downloadUrl) {
+      alert('Report is not ready for download yet.');
       return;
     }
-    // Implement report download logic
-    const link = document.createElement('a');
-    link.href = report.downloadUrl;
-    link.download = `report-${report._id}.${reportFormat}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const token = localStorage.getItem('token');
+    // We need to construct a full URL for the download link
+    const downloadUrl = `${process.env.REACT_APP_API_URL || 'http://localhost:5001'}${report.downloadUrl}?token=${token}`;
+    window.open(downloadUrl, '_blank');
   };
 
   if (loading) {
@@ -117,7 +122,7 @@ const Reports = () => {
             <ReportList
               reports={reports}
               onDelete={handleDeleteReport}
-              onView={handleViewReport}
+              onViewReport={handleViewReport}
               onDownload={handleDownloadReport}
             />
           </Paper>
@@ -125,7 +130,7 @@ const Reports = () => {
       </Grid>
 
       {/* Generate Report Dialog */}
-      <Dialog open={openForm} onClose={() => setOpenForm(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openForm} onClose={() => setOpenForm(false)}>
         <DialogTitle>Generate New Report</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
@@ -134,6 +139,8 @@ const Reports = () => {
               fullWidth
               label="Select Scan"
               margin="normal"
+              value={selectedScan}
+              onChange={(e) => setSelectedScan(e.target.value)}
               required
             >
               {completedScans.map((scan) => (
@@ -160,7 +167,8 @@ const Reports = () => {
           <Button onClick={() => setOpenForm(false)}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => handleCreateReport({ format: reportFormat })}
+            onClick={handleCreateReport}
+            disabled={!selectedScan}
           >
             Generate
           </Button>
@@ -168,28 +176,11 @@ const Reports = () => {
       </Dialog>
 
       {/* Report Viewer Dialog */}
-      <Dialog
+      <ReportViewer
+        report={selectedReport}
         open={viewReport}
         onClose={() => setViewReport(false)}
-        maxWidth="lg"
-        fullWidth
-      >
-        <DialogTitle>
-          Report Details
-          <IconButton
-            aria-label="close"
-            onClick={() => setViewReport(false)}
-            sx={{ position: 'absolute', right: 8, top: 8 }}
-          >
-            <DeleteIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent>
-          {selectedReport && (
-            <ReportViewer report={selectedReport} />
-          )}
-        </DialogContent>
-      </Dialog>
+      />
     </Container>
   );
 };

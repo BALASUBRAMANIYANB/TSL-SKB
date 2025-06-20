@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const cron = require('node-cron');
 
 const validateUser = [
   body('name').notEmpty().withMessage('Name is required'),
@@ -44,67 +45,15 @@ const validateScan = [
     .withMessage('Target is required')
     .isMongoId()
     .withMessage('Invalid target ID'),
-  
-  body('tools')
-    .isArray()
-    .withMessage('Tools must be an array')
+  body('scanType')
     .notEmpty()
-    .withMessage('At least one tool must be selected'),
-  
-  body('tools.*')
-    .isIn(['zap', 'nmap', 'nikto'])
-    .withMessage('Invalid tool selected'),
-  
-  body('toolConfig')
-    .optional()
-    .isObject()
-    .withMessage('Tool configuration must be an object'),
-  
-  body('toolConfig.zap')
-    .optional()
-    .isObject()
-    .withMessage('ZAP configuration must be an object'),
-  
-  body('toolConfig.zap.level')
-    .optional()
-    .isIn(['low', 'medium', 'high'])
-    .withMessage('Invalid ZAP scan level'),
-  
-  body('toolConfig.nmap')
-    .optional()
-    .isObject()
-    .withMessage('Nmap configuration must be an object'),
-  
-  body('toolConfig.nmap.scanType')
-    .optional()
-    .isIn(['default', 'quick', 'comprehensive'])
-    .withMessage('Invalid Nmap scan type'),
-  
-  body('toolConfig.nikto')
-    .optional()
-    .isObject()
-    .withMessage('Nikto configuration must be an object'),
-  
-  body('toolConfig.nikto.plugins')
-    .optional()
-    .isIn(['all', 'default', 'none'])
-    .withMessage('Invalid Nikto plugins option'),
-  
-  body('schedule')
-    .optional()
-    .isObject()
-    .withMessage('Schedule must be an object'),
-  
-  body('schedule.type')
-    .optional()
-    .isIn(['once', 'daily', 'weekly', 'monthly'])
-    .withMessage('Invalid schedule type'),
-  
-  body('schedule.time')
-    .optional()
+    .withMessage('Scan type is required')
     .isString()
-    .withMessage('Schedule time must be a string'),
-  
+    .withMessage('Scan type must be a string'),
+  body('wazuhParams')
+    .optional()
+    .isObject()
+    .withMessage('Wazuh parameters must be an object'),
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -116,94 +65,35 @@ const validateScan = [
 
 const validateScanTemplate = [
   body('name')
-    .notEmpty()
-    .withMessage('Template name is required')
-    .trim(),
+    .trim()
+    .notEmpty().withMessage('Template name is required.')
+    .isLength({ max: 100 }).withMessage('Template name cannot exceed 100 characters.'),
   
   body('description')
     .optional()
     .trim(),
-  
-  body('tools')
-    .isArray()
-    .withMessage('Tools must be an array')
-    .notEmpty()
-    .withMessage('At least one tool must be selected'),
-  
-  body('tools.*')
-    .isIn(['zap', 'nmap', 'nikto'])
-    .withMessage('Invalid tool selected'),
-  
-  body('toolConfig')
-    .optional()
-    .isObject()
-    .withMessage('Tool configuration must be an object'),
-  
-  body('toolConfig.zap')
-    .optional()
-    .isObject()
-    .withMessage('ZAP configuration must be an object'),
-  
-  body('toolConfig.zap.level')
-    .optional()
-    .isIn(['low', 'medium', 'high'])
-    .withMessage('Invalid ZAP scan level'),
-  
-  body('toolConfig.nmap')
-    .optional()
-    .isObject()
-    .withMessage('Nmap configuration must be an object'),
-  
-  body('toolConfig.nmap.scanType')
-    .optional()
-    .isIn(['default', 'quick', 'comprehensive'])
-    .withMessage('Invalid Nmap scan type'),
-  
-  body('toolConfig.nikto')
-    .optional()
-    .isObject()
-    .withMessage('Nikto configuration must be an object'),
-  
-  body('toolConfig.nikto.plugins')
-    .optional()
-    .isIn(['all', 'default', 'none'])
-    .withMessage('Invalid Nikto plugins option'),
-  
+
+  body('scanType')
+    .isIn(['nmap', 'nikto', 'wazuh']).withMessage('Invalid scan type. Must be one of: nmap, nikto, wazuh.'),
+
+  body('wazuhModule')
+    .if(body('scanType').equals('wazuh'))
+    .notEmpty().withMessage('Wazuh module is required when scanType is wazuh.'),
+
   body('schedule')
-    .optional()
-    .isObject()
-    .withMessage('Schedule must be an object'),
-  
-  body('schedule.type')
-    .optional()
-    .isIn(['once', 'daily', 'weekly', 'monthly'])
-    .withMessage('Invalid schedule type'),
-  
-  body('schedule.time')
-    .optional()
-    .isString()
-    .withMessage('Schedule time must be a string'),
-  
-  body('schedule.days')
-    .optional()
-    .isArray()
-    .withMessage('Schedule days must be an array'),
-  
-  body('schedule.days.*')
-    .optional()
-    .isInt({ min: 0, max: 6 })
-    .withMessage('Invalid day number'),
-  
-  body('schedule.timezone')
-    .optional()
-    .isString()
-    .withMessage('Timezone must be a string'),
-  
+    .optional({ nullable: true })
+    .trim()
+    .custom((value) => {
+      if (value && !cron.validate(value)) {
+        throw new Error('Invalid cron expression.');
+      }
+      return true;
+    }),
+
   body('isPublic')
     .optional()
-    .isBoolean()
-    .withMessage('isPublic must be a boolean'),
-  
+    .isBoolean().withMessage('isPublic must be a boolean.'),
+
   (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

@@ -9,7 +9,9 @@ class NiktoScanner extends BaseScanner {
 
   async initialize() {
     try {
+      this.updateProgress(0, 'Validating config', 'initializing');
       await this.validateConfig();
+      this.updateProgress(5, 'Config validated', 'initializing');
       return true;
     } catch (error) {
       throw new Error(`Failed to initialize Nikto scanner: ${error.message}`);
@@ -19,16 +21,17 @@ class NiktoScanner extends BaseScanner {
   async start() {
     try {
       this.isRunning = true;
-      this.updateProgress(0, 'Starting Nikto scan');
+      this.updateProgress(10, 'Starting Nikto scan', 'scanning');
 
       // Run the scan
       const results = await this.runScan();
+      this.updateProgress(70, 'Processing results', 'processing');
       
       // Process and format results
       const vulnerabilities = await this.processResults(results);
       
       this.isRunning = false;
-      this.updateProgress(100, 'Scan completed');
+      this.updateProgress(100, 'Scan completed', 'completed');
       
       return vulnerabilities;
     } catch (error) {
@@ -40,14 +43,12 @@ class NiktoScanner extends BaseScanner {
   async stop() {
     try {
       if (!this.isRunning) return;
-      
       // Nikto doesn't support stopping scans, but we can kill the process
       if (this.scanProcess) {
         this.scanProcess.kill();
       }
-      
       this.isRunning = false;
-      this.updateProgress(0, 'Scan stopped');
+      this.updateProgress(0, 'Scan stopped', 'completed');
     } catch (error) {
       throw new Error(`Failed to stop Nikto scan: ${error.message}`);
     }
@@ -56,17 +57,14 @@ class NiktoScanner extends BaseScanner {
   async validateConfig() {
     const required = ['target'];
     const missing = required.filter(field => !this.config[field]);
-    
     if (missing.length > 0) {
       throw new Error(`Missing required configuration: ${missing.join(', ')}`);
     }
-    
     return true;
   }
 
   async processResults(results) {
     const vulnerabilities = [];
-    
     // Process Nikto findings
     for (const finding of results) {
       const vulnerability = this.formatVulnerability({
@@ -90,8 +88,8 @@ class NiktoScanner extends BaseScanner {
         }
       });
       vulnerabilities.push(vulnerability);
+      this.emitPartialResult(vulnerability);
     }
-    
     return vulnerabilities;
   }
 
@@ -99,21 +97,19 @@ class NiktoScanner extends BaseScanner {
     return new Promise((resolve, reject) => {
       const args = this.buildNiktoArgs();
       let output = '';
-      
+      this.updateProgress(20, 'Nikto process started', 'scanning');
       this.scanProcess = spawn(this.niktoPath, args);
-      
       this.scanProcess.stdout.on('data', (data) => {
         output += data.toString();
         this.updateProgressFromOutput(data.toString());
       });
-      
       this.scanProcess.stderr.on('data', (data) => {
         console.error(`Nikto stderr: ${data}`);
       });
-      
       this.scanProcess.on('close', (code) => {
         if (code === 0) {
           try {
+            this.updateProgress(60, 'Parsing scan output', 'processing');
             const results = this.parseNiktoOutput(output);
             resolve(results);
           } catch (error) {
@@ -132,21 +128,17 @@ class NiktoScanner extends BaseScanner {
       '-Format', 'json',
       '-output', '-'
     ];
-    
     // Add plugin options
     if (this.config.plugins) {
       args.push('-Plugins', this.config.plugins);
     }
-    
     // Add additional options
     if (this.config.ssl) {
       args.push('-ssl');
     }
-    
     if (this.config.timeout) {
       args.push('-timeout', this.config.timeout);
     }
-    
     return args;
   }
 
@@ -156,7 +148,7 @@ class NiktoScanner extends BaseScanner {
     if (progressMatch) {
       const items = parseInt(progressMatch[1]);
       const progress = Math.min((items / 1000) * 100, 99); // Assuming max 1000 items
-      this.updateProgress(progress, 'Scanning...');
+      this.updateProgress(progress, 'Scanning...', 'scanning');
     }
   }
 
@@ -166,7 +158,6 @@ class NiktoScanner extends BaseScanner {
       const lines = output.split('\n')
         .filter(line => line.trim().startsWith('{'))
         .map(line => JSON.parse(line));
-      
       return lines;
     } catch (error) {
       throw new Error(`Failed to parse Nikto output: ${error.message}`);
@@ -178,20 +169,16 @@ class NiktoScanner extends BaseScanner {
       'vulnerable', 'exploit', 'remote code execution', 'sql injection',
       'xss', 'cross-site scripting', 'directory traversal'
     ];
-    
     const mediumSeverityKeywords = [
       'information disclosure', 'version disclosure', 'default page',
       'directory listing', 'server information'
     ];
-    
     const messageLower = message.toLowerCase();
-    
     if (highSeverityKeywords.some(keyword => messageLower.includes(keyword))) {
       return 'high';
     } else if (mediumSeverityKeywords.some(keyword => messageLower.includes(keyword))) {
       return 'medium';
     }
-    
     return 'low';
   }
 }

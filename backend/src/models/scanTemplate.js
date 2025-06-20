@@ -1,14 +1,29 @@
 const mongoose = require('mongoose');
+const cron = require('node-cron');
 
 const scanTemplateSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Template name is required'],
-    trim: true
+    required: [true, 'Template name is required.'],
+    trim: true,
+    maxlength: [100, 'Template name cannot be more than 100 characters.']
   },
   description: {
     type: String,
     trim: true
+  },
+  scanType: {
+    type: String,
+    required: [true, 'Scan type is required.'],
+    enum: ['nmap', 'nikto', 'wazuh']
+  },
+  wazuhModule: {
+    type: String,
+    required: function() { return this.scanType === 'wazuh'; }
+  },
+  wazuhParams: {
+    type: Object,
+    default: {}
   },
   tools: [{
     type: String,
@@ -55,17 +70,19 @@ const scanTemplateSchema = new mongoose.Schema({
     }
   },
   schedule: {
-    type: {
-      type: String,
-      enum: ['once', 'daily', 'weekly', 'monthly'],
-      default: 'once'
-    },
-    time: String,
-    days: [Number], // For weekly/monthly schedules
-    timezone: {
-      type: String,
-      default: 'UTC'
+    type: String,
+    trim: true,
+    default: null,
+    validate: {
+      validator: function(v) {
+        return v === null || cron.validate(v);
+      },
+      message: props => `${props.value} is not a valid cron expression.`
     }
+  },
+  isScheduled: {
+    type: Boolean,
+    default: false
   },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -79,7 +96,33 @@ const scanTemplateSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  // --- Authenticated scan support ---
+  auth: {
+    type: {
+      type: String,
+      enum: ['none', 'basic', 'cookie', 'bearer', 'custom'],
+      default: 'none'
+    },
+    username: String,
+    password: String,
+    cookie: String,
+    token: String,
+    customHeaders: {
+      type: Object,
+      default: {}
+    }
   }
 });
 
-module.exports = mongoose.model('ScanTemplate', scanTemplateSchema); 
+// Ensures that isScheduled is true only if a schedule is set
+scanTemplateSchema.pre('save', function(next) {
+  if (this.schedule) {
+    this.isScheduled = true;
+  } else {
+    this.isScheduled = false;
+  }
+  next();
+});
+
+module.exports = mongoose.model('ScanTemplate', scanTemplateSchema);

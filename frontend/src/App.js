@@ -17,6 +17,7 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import UserManagementPage from './pages/UserManagement';
 
 // Auth Guard
 import PrivateRoute from './components/auth/PrivateRoute';
@@ -49,6 +50,11 @@ function App() {
               <Route path="settings" element={
                 <PrivateRoute>
                   <Settings />
+                </PrivateRoute>
+              } />
+              <Route path="users" element={
+                <PrivateRoute>
+                  <UserManagementPage />
                 </PrivateRoute>
               } />
             </Route>

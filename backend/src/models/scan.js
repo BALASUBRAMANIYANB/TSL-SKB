@@ -14,18 +14,27 @@ const ScanSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+    enum: ['pending', 'queued', 'running', 'completed', 'failed', 'cancelled'],
     default: 'pending'
   },
+  template: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ScanTemplate',
+    required: true
+  },
   scanType: {
-    type: String,
-    enum: ['full', 'quick', 'custom', 'retest'],
-    default: 'full'
+    type: String
+  },
+  wazuhModule: {
+    type: String
+  },
+  wazuhParams: {
+    type: Object,
+    default: {}
   },
   tools: [{
     type: String,
-    enum: ['zap', 'nmap', 'nikto', 'burp'],
-    required: true
+    enum: ['zap', 'nmap', 'nikto', 'burp']
   }],
   toolConfig: {
     zap: {
@@ -57,6 +66,22 @@ const ScanSchema = new mongoose.Schema({
         scope: 'all',
         excludePaths: []
       }
+    }
+  },
+  // --- Authenticated scan support ---
+  auth: {
+    type: {
+      type: String,
+      enum: ['none', 'basic', 'cookie', 'bearer', 'custom'],
+      default: 'none'
+    },
+    username: String,
+    password: String,
+    cookie: String,
+    token: String,
+    customHeaders: {
+      type: Object,
+      default: {}
     }
   },
   scheduledAt: {

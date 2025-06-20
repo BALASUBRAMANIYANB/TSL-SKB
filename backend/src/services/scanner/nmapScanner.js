@@ -10,7 +10,9 @@ class NmapScanner extends BaseScanner {
 
   async initialize() {
     try {
+      this.updateProgress(0, 'Validating config', 'initializing');
       await this.validateConfig();
+      this.updateProgress(5, 'Config validated', 'initializing');
       return true;
     } catch (error) {
       throw new Error(`Failed to initialize Nmap scanner: ${error.message}`);
@@ -20,16 +22,17 @@ class NmapScanner extends BaseScanner {
   async start() {
     try {
       this.isRunning = true;
-      this.updateProgress(0, 'Starting Nmap scan');
+      this.updateProgress(10, 'Starting Nmap scan', 'scanning');
 
       // Run the scan
       const results = await this.runScan();
+      this.updateProgress(70, 'Processing results', 'processing');
       
       // Process and format results
       const vulnerabilities = await this.processResults(results);
       
       this.isRunning = false;
-      this.updateProgress(100, 'Scan completed');
+      this.updateProgress(100, 'Scan completed', 'completed');
       
       return vulnerabilities;
     } catch (error) {
@@ -41,14 +44,12 @@ class NmapScanner extends BaseScanner {
   async stop() {
     try {
       if (!this.isRunning) return;
-      
       // Nmap doesn't support stopping scans, but we can kill the process
       if (this.scanProcess) {
         this.scanProcess.kill();
       }
-      
       this.isRunning = false;
-      this.updateProgress(0, 'Scan stopped');
+      this.updateProgress(0, 'Scan stopped', 'completed');
     } catch (error) {
       throw new Error(`Failed to stop Nmap scan: ${error.message}`);
     }
@@ -57,17 +58,14 @@ class NmapScanner extends BaseScanner {
   async validateConfig() {
     const required = ['target', 'scanType', 'ports'];
     const missing = required.filter(field => !this.config[field]);
-    
     if (missing.length > 0) {
       throw new Error(`Missing required configuration: ${missing.join(', ')}`);
     }
-    
     return true;
   }
 
   async processResults(results) {
     const vulnerabilities = [];
-    
     // Process open ports and services
     for (const host of results.nmaprun.host || []) {
       for (const port of host.ports[0].port || []) {
@@ -94,10 +92,10 @@ class NmapScanner extends BaseScanner {
             }
           });
           vulnerabilities.push(vulnerability);
+          this.emitPartialResult(vulnerability);
         }
       }
     }
-    
     return vulnerabilities;
   }
 
@@ -105,21 +103,19 @@ class NmapScanner extends BaseScanner {
     return new Promise((resolve, reject) => {
       const args = this.buildNmapArgs();
       let output = '';
-      
+      this.updateProgress(20, 'Nmap process started', 'scanning');
       this.scanProcess = spawn(this.nmapPath, args);
-      
       this.scanProcess.stdout.on('data', (data) => {
         output += data.toString();
         this.updateProgressFromOutput(data.toString());
       });
-      
       this.scanProcess.stderr.on('data', (data) => {
         console.error(`Nmap stderr: ${data}`);
       });
-      
       this.scanProcess.on('close', async (code) => {
         if (code === 0) {
           try {
+            this.updateProgress(60, 'Parsing scan output', 'processing');
             const parser = new xml2js.Parser();
             const result = await parser.parseStringPromise(output);
             resolve(result);
@@ -141,12 +137,10 @@ class NmapScanner extends BaseScanner {
       '-p', this.config.ports,
       this.config.target
     ];
-    
     // Add timing template
     if (this.config.timing) {
       args.push(`-T${this.config.timing}`);
     }
-    
     // Add additional options based on scan type
     switch (this.config.scanType) {
       case 'aggressive':
@@ -159,7 +153,6 @@ class NmapScanner extends BaseScanner {
       default:
         break;
     }
-    
     return args;
   }
 
@@ -168,7 +161,7 @@ class NmapScanner extends BaseScanner {
     const progressMatch = output.match(/(\d+\.\d+)% done/);
     if (progressMatch) {
       const progress = parseFloat(progressMatch[1]);
-      this.updateProgress(progress, 'Scanning...');
+      this.updateProgress(progress, 'Scanning...', 'scanning');
     }
   }
 
@@ -182,7 +175,6 @@ class NmapScanner extends BaseScanner {
       '1433': 'high',  // MSSQL
       '3306': 'medium' // MySQL
     };
-    
     const dangerousServices = {
       'ftp': 'high',
       'telnet': 'high',
@@ -191,7 +183,6 @@ class NmapScanner extends BaseScanner {
       'mssql': 'high',
       'mysql': 'medium'
     };
-    
     return dangerousPorts[port] || dangerousServices[service.toLowerCase()] || 'low';
   }
 }

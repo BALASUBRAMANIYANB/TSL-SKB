@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/auth');
 const { validateScanTemplate } = require('../middleware/validation');
 const ScanTemplate = require('../../models/scanTemplate');
+const schedulerService = require('../../services/schedulerService');
 
 // @desc    Get all scan templates
 // @route   GET /api/scan-templates
@@ -147,6 +148,54 @@ router.post('/:id/create-scan', protect, async (req, res) => {
   } catch (error) {
     console.error('Error creating scan from template:', error);
     res.status(500).json({ message: 'Error creating scan from template' });
+  }
+});
+
+// @desc    Schedule a scan template
+// @route   POST /api/scan-templates/:id/schedule
+// @access  Private
+router.post('/:id/schedule', protect, async (req, res) => {
+  try {
+    const { schedule } = req.body;
+    if (!schedule) {
+      return res.status(400).json({ message: 'Cron schedule is required.' });
+    }
+
+    const template = await ScanTemplate.findOne({ _id: req.params.id, createdBy: req.user._id });
+    if (!template) {
+      return res.status(404).json({ message: 'Scan template not found.' });
+    }
+
+    template.schedule = schedule;
+    template.isScheduled = true;
+    await template.save();
+
+    schedulerService.scheduleScan(template);
+
+    res.json({ message: 'Scan template scheduled successfully.', template });
+  } catch (error) {
+    res.status(500).json({ message: 'Error scheduling scan template.' });
+  }
+});
+
+// @desc    Unschedule a scan template
+// @route   POST /api/scan-templates/:id/unschedule
+// @access  Private
+router.post('/:id/unschedule', protect, async (req, res) => {
+  try {
+    const template = await ScanTemplate.findOne({ _id: req.params.id, createdBy: req.user._id });
+    if (!template) {
+      return res.status(404).json({ message: 'Scan template not found.' });
+    }
+
+    template.isScheduled = false;
+    await template.save();
+
+    schedulerService.cancelScan(template._id);
+
+    res.json({ message: 'Scan template unscheduled successfully.' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error unscheduling scan template.' });
   }
 });
 

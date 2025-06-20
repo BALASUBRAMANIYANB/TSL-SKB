@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../../models/user');
 const { generateToken } = require('../../config/auth');
 const { validateUser, validateLogin } = require('../middleware/validation');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorize } = require('../middleware/auth');
 const logger = require('../../utils/logger');
 
 // @route   POST /api/users/register
@@ -72,7 +72,8 @@ router.post('/login', validateLogin, async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        role: user.role
       },
       token
     });
@@ -137,6 +138,70 @@ router.post('/change-password', authenticateToken, async (req, res) => {
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     logger.error(`Error changing password: ${error.message}`);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/users
+// @desc    Get all users
+// @access  Admin
+router.get('/', authenticateToken, authorize('admin'), async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.json(users);
+  } catch (error) {
+    logger.error(`Error fetching users: ${error.message}`);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/users/:id/role
+// @desc    Update user role
+// @access  Admin
+router.put('/:id/role', authenticateToken, authorize('admin'), async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!role || !['user', 'admin'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role specified' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.role = role;
+    await user.save();
+    
+    logger.info(`Role updated for user: ${user.email} to ${role}`);
+    res.json({ message: `User role updated to ${role}` });
+  } catch (error) {
+    logger.error(`Error updating user role: ${error.message}`);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   DELETE /api/users/:id
+// @desc    Delete a user by ID
+// @access  Admin
+router.delete('/:id', authenticateToken, authorize('admin'), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Prevent admin from deleting themselves
+    if (user._id.toString() === req.user.id.toString()) {
+      return res.status(400).json({ message: 'You cannot delete your own account via this route.' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    logger.info(`Account deleted by admin for user: ${user.email}`);
+
+    res.json({ message: 'User account deleted successfully' });
+  } catch (error) {
+    logger.error(`Error deleting user account: ${error.message}`);
     res.status(500).json({ message: 'Server error' });
   }
 });

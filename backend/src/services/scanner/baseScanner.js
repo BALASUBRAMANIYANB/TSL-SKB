@@ -4,6 +4,10 @@ class BaseScanner {
     this.isRunning = false;
     this.progress = 0;
     this.currentStep = '';
+    this.phases = ['initializing', 'scanning', 'processing', 'completed'];
+    this.currentPhase = this.phases[0];
+    this.partialResults = [];
+    this.partialResultCallback = null;
   }
 
   async initialize() {
@@ -22,6 +26,7 @@ class BaseScanner {
     return {
       progress: this.progress,
       currentStep: this.currentStep,
+      currentPhase: this.currentPhase,
       isRunning: this.isRunning
     };
   }
@@ -34,9 +39,21 @@ class BaseScanner {
     throw new Error('processResults() method must be implemented');
   }
 
-  updateProgress(progress, step) {
+  updateProgress(progress, step, phase) {
     this.progress = progress;
     this.currentStep = step;
+    if (phase) this.currentPhase = phase;
+  }
+
+  emitPartialResult(result) {
+    this.partialResults.push(result);
+    if (typeof this.partialResultCallback === 'function') {
+      this.partialResultCallback(result);
+    }
+  }
+
+  onPartialResult(callback) {
+    this.partialResultCallback = callback;
   }
 
   formatVulnerability(rawVulnerability) {

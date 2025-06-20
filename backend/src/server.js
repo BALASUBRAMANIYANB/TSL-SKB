@@ -1,13 +1,18 @@
 const app = require('./app');
 const { connect } = require('./config/db');
 const logger = require('./utils/logger');
+const schedulerService = require('./services/schedulerService');
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // Connect to database
 connect()
   .then(() => {
     logger.info('Connected to database');
+    
+    // Initialize scheduler
+    schedulerService.initialize();
+
     // Start server
     app.listen(PORT, () => {
       logger.info(`Server is running on port ${PORT}`);

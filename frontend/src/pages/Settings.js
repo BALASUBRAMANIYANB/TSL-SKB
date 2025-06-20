@@ -13,8 +13,40 @@ import {
   Divider,
   Alert,
   Snackbar,
+  Avatar,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
+  Tabs,
+  Tab,
 } from '@mui/material';
-import { updateUserSettings } from '../store/slices/authSlice';
+import { PhotoCamera, Delete } from '@mui/icons-material';
+import { updateUserSettings, changePassword, deleteAccount } from '../store/slices/authSlice';
+import UserProfileSettings from '../components/settings/UserProfileSettings';
+import ScannerSettings from '../components/settings/ScannerSettings';
+
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`settings-tabpanel-${index}`}
+      aria-labelledby={`settings-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 const Settings = () => {
   const dispatch = useDispatch();
@@ -22,6 +54,8 @@ const Settings = () => {
   const [settings, setSettings] = useState({
     email: user?.email || '',
     name: user?.name || '',
+    role: user?.role || 'User',
+    lastLogin: user?.lastLogin || new Date().toISOString(),
     notifications: {
       email: true,
       scanComplete: true,
@@ -34,11 +68,23 @@ const Settings = () => {
       maxRetries: 3,
     },
   });
+
+  const [passwordChange, setPasswordChange] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
     severity: 'success',
   });
+
+  const [currentTab, setCurrentTab] = useState(0);
 
   const handleChange = (section, field, value) => {
     if (section) {
@@ -55,6 +101,13 @@ const Settings = () => {
         [field]: value,
       });
     }
+  };
+
+  const handlePasswordChange = (field, value) => {
+    setPasswordChange({
+      ...passwordChange,
+      [field]: value,
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -75,160 +128,142 @@ const Settings = () => {
     }
   };
 
+  const validatePassword = (password) => {
+    const errors = [];
+    if (password.length < 8) {
+      errors.push('Password must be at least 8 characters long');
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Password must contain at least one uppercase letter');
+    }
+    if (!/[a-z]/.test(password)) {
+      errors.push('Password must contain at least one lowercase letter');
+    }
+    if (!/[0-9]/.test(password)) {
+      errors.push('Password must contain at least one number');
+    }
+    if (!/[!@#$%^&*]/.test(password)) {
+      errors.push('Password must contain at least one special character (!@#$%^&*)');
+    }
+    return errors;
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (passwordChange.newPassword !== passwordChange.confirmPassword) {
+      setSnackbar({
+        open: true,
+        message: 'New passwords do not match',
+        severity: 'error',
+      });
+      return;
+    }
+
+    const passwordErrors = validatePassword(passwordChange.newPassword);
+    if (passwordErrors.length > 0) {
+      setSnackbar({
+        open: true,
+        message: passwordErrors.join('\n'),
+        severity: 'error',
+      });
+      return;
+    }
+
+    try {
+      await dispatch(changePassword({
+        currentPassword: passwordChange.currentPassword,
+        newPassword: passwordChange.newPassword,
+      })).unwrap();
+
+      setSnackbar({
+        open: true,
+        message: 'Password updated successfully',
+        severity: 'success',
+      });
+      setPasswordChange({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error.message || 'Failed to update password',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== 'DELETE') {
+      setSnackbar({
+        open: true,
+        message: 'Please type DELETE to confirm',
+        severity: 'error',
+      });
+      return;
+    }
+
+    try {
+      await dispatch(deleteAccount()).unwrap();
+      // Redirect will be handled by the auth slice
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error.message || 'Failed to delete account',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setCurrentTab(newValue);
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Settings
-          </Typography>
-        </Grid>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Settings
+      </Typography>
+      <Paper>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={currentTab} onChange={handleTabChange} aria-label="settings tabs">
+            <Tab label="User Profile" id="settings-tab-0" />
+            <Tab label="Scanner" id="settings-tab-1" />
+          </Tabs>
+        </Box>
+        <TabPanel value={currentTab} index={0}>
+          <UserProfileSettings />
+        </TabPanel>
+        <TabPanel value={currentTab} index={1}>
+          <ScannerSettings />
+        </TabPanel>
+      </Paper>
 
-        <Grid item xs={12}>
-          <Paper elevation={3} sx={{ p: 3 }}>
-            <form onSubmit={handleSubmit}>
-              {/* Profile Settings */}
-              <Typography variant="h6" gutterBottom>
-                Profile Settings
-              </Typography>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Name"
-                    value={settings.name}
-                    onChange={(e) => handleChange(null, 'name', e.target.value)}
-                    margin="normal"
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Email"
-                    type="email"
-                    value={settings.email}
-                    onChange={(e) => handleChange(null, 'email', e.target.value)}
-                    margin="normal"
-                  />
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 3 }} />
-
-              {/* Notification Settings */}
-              <Typography variant="h6" gutterBottom>
-                Notification Settings
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.notifications.email}
-                        onChange={(e) =>
-                          handleChange('notifications', 'email', e.target.checked)
-                        }
-                      />
-                    }
-                    label="Email Notifications"
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.notifications.scanComplete}
-                        onChange={(e) =>
-                          handleChange('notifications', 'scanComplete', e.target.checked)
-                        }
-                      />
-                    }
-                    label="Scan Completion"
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.notifications.criticalFindings}
-                        onChange={(e) =>
-                          handleChange('notifications', 'criticalFindings', e.target.checked)
-                        }
-                      />
-                    }
-                    label="Critical Findings"
-                  />
-                </Grid>
-              </Grid>
-
-              <Divider sx={{ my: 3 }} />
-
-              {/* Scanner Settings */}
-              <Typography variant="h6" gutterBottom>
-                Scanner Settings
-              </Typography>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Default Timeout (seconds)"
-                    type="number"
-                    value={settings.scanner.defaultTimeout}
-                    onChange={(e) =>
-                      handleChange('scanner', 'defaultTimeout', parseInt(e.target.value))
-                    }
-                    margin="normal"
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Concurrent Scans"
-                    type="number"
-                    value={settings.scanner.concurrentScans}
-                    onChange={(e) =>
-                      handleChange('scanner', 'concurrentScans', parseInt(e.target.value))
-                    }
-                    margin="normal"
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={settings.scanner.autoRetry}
-                        onChange={(e) =>
-                          handleChange('scanner', 'autoRetry', e.target.checked)
-                        }
-                      />
-                    }
-                    label="Auto Retry Failed Scans"
-                  />
-                </Grid>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Max Retries"
-                    type="number"
-                    value={settings.scanner.maxRetries}
-                    onChange={(e) =>
-                      handleChange('scanner', 'maxRetries', parseInt(e.target.value))
-                    }
-                    margin="normal"
-                    disabled={!settings.scanner.autoRetry}
-                  />
-                </Grid>
-              </Grid>
-
-              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-                <Button type="submit" variant="contained" color="primary">
-                  Save Settings
-                </Button>
-              </Box>
-            </form>
-          </Paper>
-        </Grid>
-      </Grid>
+      {/* Delete Account Dialog */}
+      <Dialog open={deleteDialog} onClose={() => setDeleteDialog(false)}>
+        <DialogTitle>Delete Account</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This action cannot be undone. This will permanently delete your account and all associated data.
+            Please type DELETE to confirm.
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Type DELETE to confirm"
+            fullWidth
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialog(false)}>Cancel</Button>
+          <Button onClick={handleDeleteAccount} color="error">
+            Delete Account
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snackbar.open}
